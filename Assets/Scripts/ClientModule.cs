@@ -17,7 +17,7 @@ public class ClientModule : MonoSingleton<ClientModule>
 {
     public bool IsInitialized { get; private set; }
 
-    public bool IsConnected { get; private set; }
+    public bool IsConnected { get => Client != null && Client.Connected; }
     public bool isRunning { get; private set; }
     private bool isClosing { get; set; } = false;
 
@@ -60,7 +60,6 @@ public class ClientModule : MonoSingleton<ClientModule>
             return;
         }
 
-        IsConnected = true;
         isClosing = false;
         OnConnected?.Invoke();
     }
@@ -86,16 +85,13 @@ public class ClientModule : MonoSingleton<ClientModule>
 
         isClosing = true;
 
-        //isRunning = false;
-
         //ReceiveThread는 readLine이 해당 쓰레드를 block 하기때문에 Abort를 해야함.
 
         if (Client.Connected)
         {
             try
             {
-                //Client.Client.Shutdown(SocketShutdown.Both);
-
+                Client.Client.LingerState = new LingerOption(true, 0);
                 Client.Client.Close();
             }
             catch (SocketException e)
@@ -104,24 +100,24 @@ public class ClientModule : MonoSingleton<ClientModule>
             }
             finally
             {
+                //TCPClient.Close는 내부적으로 NetworkStream.Close를 호출함
                 Client.Close();
             }
         }
 
-        //TCPClient.Close는 내부적으로 NetworkStream.Close를 호출함
-        //Client.Close();
-
-        //if (ReceiveThread.IsAlive)
-        //    ReceiveThread.Abort();
-
-        //if (SendThread.IsAlive)
-        //    SendThread.Interrupt();
-
-        //SendThread.Join();
-        //ReceiveThread.Join();
+        if (ReceiveThread.IsAlive)
+            ReceiveThread.Join();
+        if (SendThread.IsAlive)
+            SendThread.Join();
 
 
-        IsConnected = false;
+        var message_b = new Message();
+        message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
+        message_b.Desc = $"Disconnected.";
+        message_b.Name = "Log";
+
+        OnReceived?.Invoke(message_b);
+
         OnDisconnected?.Invoke();
     }
 
@@ -130,7 +126,6 @@ public class ClientModule : MonoSingleton<ClientModule>
         //알아서 dispose 하도록
         using (var sw = new StreamWriter(Client.GetStream()))
         {
-
             while (Client.Connected && sw.BaseStream.CanWrite)
             {
                 try

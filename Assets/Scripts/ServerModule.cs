@@ -22,6 +22,7 @@ public class Connection : IDisposable
 
     private Thread ReceiveThread;
     private Thread SendThread;
+    public bool IsConnected { get => Client != null && Client.Connected; }
 
     public bool IsRunning { get; private set; }
 
@@ -43,30 +44,11 @@ public class Connection : IDisposable
         SendThread.Start();
     }
 
-    [Obsolete]
-    public void Stop(Action OnComplete = null)
-    {
-        IsRunning = false;
-
-        ReceiveThread.Abort();
-        SendThread.Interrupt();
-
-        try
-        {
-            ReceiveThread.Join();
-            SendThread.Join();
-        }
-        catch (ThreadInterruptedException e)
-        {
-            //.
-        }
-    }
-
     private void Receive()
     {
         using (var sr = new StreamReader(Client.GetStream()))
         {
-            while (IsRunning)
+            while (Client.Connected && sr.BaseStream.CanRead)
             {
                 try
                 {
@@ -81,20 +63,27 @@ public class Connection : IDisposable
                 try
                 {
                     var data = sr.ReadLine();
-                    OnMessageReceived?.Invoke(this, data);
+                    if (string.IsNullOrEmpty(data))
+                    {
+                        OnMessageReceived?.Invoke(this, data);
+                    }
                 }
-                catch (IOException e)
+                catch (Exception e)
                 {
                     OnExceptionThrown?.Invoke(this, e);
                 }
-                catch (ThreadAbortException e)
-                {
-                    OnExceptionThrown?.Invoke(this, e);
-                }
-                catch (OutOfMemoryException e)
-                {
-                    OnExceptionThrown?.Invoke(this, e);
-                }
+                //catch (IOException e)
+                //{
+                //    OnExceptionThrown?.Invoke(this, e);
+                //}
+                //catch (ThreadAbortException e)
+                //{
+                //    OnExceptionThrown?.Invoke(this, e);
+                //}
+                //catch (OutOfMemoryException e)
+                //{
+                //    OnExceptionThrown?.Invoke(this, e);
+                //}
             }
         }
         
@@ -104,7 +93,7 @@ public class Connection : IDisposable
     {
         using (var sw = new StreamWriter(Client.GetStream()))
         {
-            while (IsRunning)
+            while (Client.Connected && sw.BaseStream.CanWrite)
             {
                 try
                 {
@@ -157,34 +146,39 @@ public class Connection : IDisposable
         if (!IsRunning)
             return true;
 
-        IsRunning = false;
+        //IsRunning = false;
         isClosing = true;
 
         if (Client.Connected)
         {
             try
             {
-                Client.Client.Shutdown(SocketShutdown.Both);
+                Client.Client.LingerState = new LingerOption(true, 0);
+                Client.Client.Close();
             }
             catch (SocketException e)
             {
                 Debug.Log("SocketException in shutdown : " + e);
             }
+            finally
+            {
+                Client.Close();
+            }
         }
 
         if (ReceiveThread.IsAlive)
         {
-            ReceiveThread.Abort();
+            //ReceiveThread.Abort();
             ReceiveThread.Join();
         }
 
         if (SendThread.IsAlive)
         {
-            SendThread.Interrupt();
+            //SendThread.Interrupt();
             SendThread.Join();
         }
 
-        Client.Close();
+        //Client.Close();
 
         return true;
     }
