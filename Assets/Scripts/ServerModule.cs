@@ -10,10 +10,12 @@ using System.Net;
 using System.Net.Sockets;
 
 
-public class Connection : IDisposable
+/// <summary>
+/// instance. use and release NEVER recycle
+/// </summary>
+public class Connection 
 {
     public TcpClient Client { get; private set; }
-
 
     public event Action<Connection, string> OnMessageReceived;
     public event Action<Connection, Exception> OnExceptionThrown;
@@ -63,7 +65,7 @@ public class Connection : IDisposable
                 try
                 {
                     var data = sr.ReadLine();
-                    if (string.IsNullOrEmpty(data))
+                    //if (!string.IsNullOrEmpty(data))
                     {
                         OnMessageReceived?.Invoke(this, data);
                     }
@@ -72,18 +74,6 @@ public class Connection : IDisposable
                 {
                     OnExceptionThrown?.Invoke(this, e);
                 }
-                //catch (IOException e)
-                //{
-                //    OnExceptionThrown?.Invoke(this, e);
-                //}
-                //catch (ThreadAbortException e)
-                //{
-                //    OnExceptionThrown?.Invoke(this, e);
-                //}
-                //catch (OutOfMemoryException e)
-                //{
-                //    OnExceptionThrown?.Invoke(this, e);
-                //}
             }
         }
         
@@ -117,15 +107,7 @@ public class Connection : IDisposable
                         sw.WriteLine(message);
                         sw.Flush();
                     }
-                    catch (IOException e)
-                    {
-                        OnExceptionThrown?.Invoke(this, e);
-                    }
-                    catch (ThreadAbortException e)
-                    {
-                        OnExceptionThrown?.Invoke(this, e);
-                    }
-                    catch (ObjectDisposedException e)
+                    catch (Exception e)
                     {
                         OnExceptionThrown?.Invoke(this, e);
                     }
@@ -134,10 +116,6 @@ public class Connection : IDisposable
         }
     }
 
-    /// <summary>
-    /// 중복 처리 방지
-    /// </summary>
-    /// <returns>종료여부</returns>
     public bool TryClose()
     {
         if (isClosing)
@@ -146,7 +124,6 @@ public class Connection : IDisposable
         if (!IsRunning)
             return true;
 
-        //IsRunning = false;
         isClosing = true;
 
         if (Client.Connected)
@@ -168,34 +145,16 @@ public class Connection : IDisposable
 
         if (ReceiveThread.IsAlive)
         {
-            //ReceiveThread.Abort();
+            ReceiveThread.Abort();
             ReceiveThread.Join();
         }
 
         if (SendThread.IsAlive)
         {
-            //SendThread.Interrupt();
             SendThread.Join();
         }
 
-        //Client.Close();
-
         return true;
-    }
-
-    public void Dispose()
-    {
-        ReceiveThread.Abort();
-        SendThread.Abort();
-
-        try
-        {
-            Client.Client.Shutdown(SocketShutdown.Both);
-        }
-        finally
-        {
-            Client.Dispose();
-        }
     }
 }
 
@@ -211,9 +170,9 @@ public class ServerModule : MonoSingleton<ServerModule>
     private List<Connection> connections = new List<Connection>();
 
     private ConcurrentQueue<(Connection,Exception)> Exceptions = new ConcurrentQueue<(Connection, Exception)>();
-    private ConcurrentQueue<(Connection,string)> ReceivedDatas = new ConcurrentQueue<(Connection, string)>();
+    private ConcurrentQueue<(Connection,string)> RequestDatas = new ConcurrentQueue<(Connection, string)>();
 
-
+    public event Action OnStart;
     public event Action<Message> OnReceived;
 
     private Thread AcceptThread;
@@ -241,6 +200,8 @@ public class ServerModule : MonoSingleton<ServerModule>
 
         AcceptThread = new Thread(StartAccept);
         AcceptThread.Start();
+
+        OnStart?.Invoke();
         IsRunning = true;
     }
 
@@ -251,26 +212,10 @@ public class ServerModule : MonoSingleton<ServerModule>
             ProcessOnException(pair.Item1, pair.Item2);
         }
 
-        while(ReceivedDatas.TryDequeue(out var pair))
+        while(RequestDatas.TryDequeue(out var pair))
         {
-            ProcessOnMessageReceived(pair.Item1, pair.Item2);
+            ProcessRequest(pair.Item1, pair.Item2);
         }
-
-#if UNITY_EDITOR
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            foreach (var connection in connections)
-            {
-                if(connection.TryClose())
-                {
-                    connection.OnMessageReceived -= Connection_OnMessageReceived;
-                    connection.OnExceptionThrown -= Connection_OnExceptionThrown;
-
-                    connections.Remove(connection);
-                }
-            }
-        }
-#endif
     }
 
     public void StartAccept()
@@ -301,7 +246,7 @@ public class ServerModule : MonoSingleton<ServerModule>
     {
         //해당 커넥션의 Received Thread 위에서 작동한다.
         //따라서 Thread를 abort하거나 할 수 없을 수 있으므로, 해당동작을 담아둔 뒤, 메인쓰레드에서 처리한다
-        ReceivedDatas.Enqueue((senderConnection, json));
+        RequestDatas.Enqueue((senderConnection, json));
     }
 
     private void Connection_OnExceptionThrown(Connection connection, Exception e)
@@ -311,7 +256,7 @@ public class ServerModule : MonoSingleton<ServerModule>
         Exceptions.Enqueue((connection, e));
     }
 
-    private void ProcessOnMessageReceived(in Connection senderConnection,in string json)
+    private void ProcessRequest(in Connection senderConnection,in string json)
     {
         var request = JsonUtility.FromJson<Request>(json);
 
@@ -430,7 +375,13 @@ public class ServerModule : MonoSingleton<ServerModule>
 
         foreach (var connection in connections)
         {
-            connection.TryClose();
+            if (connection.TryClose())
+            {
+                connection.OnMessageReceived -= Connection_OnMessageReceived;
+                connection.OnExceptionThrown -= Connection_OnExceptionThrown;
+
+                connections.Remove(connection);
+            }
         }
     }
 }

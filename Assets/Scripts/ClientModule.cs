@@ -30,6 +30,9 @@ public class ClientModule : MonoSingleton<ClientModule>
 
     private ConcurrentQueue<string> Requests = new ConcurrentQueue<string>();
 
+    private ConcurrentQueue<Exception> Exceptions = new ConcurrentQueue<Exception>();
+    private ConcurrentQueue<string> Responses = new ConcurrentQueue<string>();
+
     private Thread ReceiveThread;
     private Thread SendThread;
 
@@ -106,19 +109,18 @@ public class ClientModule : MonoSingleton<ClientModule>
         }
 
         if (ReceiveThread.IsAlive)
+        {
+            //IOBlocking으로 인한 ReceiveThread abort
+            ReceiveThread.Abort();
             ReceiveThread.Join();
+        }
 
         if (SendThread.IsAlive)
             SendThread.Join();
 
         isRunning = false;
 
-        var message_b = new Message();
-        message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
-        message_b.Desc = $"Disconnected.";
-        message_b.Name = "Log";
-
-        OnReceived?.Invoke(message_b);
+        OnReceived?.Invoke(BuildSimpleMessage($"Disconnected"));
 
         OnDisconnected?.Invoke();
     }
@@ -151,14 +153,9 @@ public class ClientModule : MonoSingleton<ClientModule>
                     sw.WriteLine(data);
                     sw.Flush();
                 }
-                catch (IOException e)
-                {
-                    Close();
-                    break;
-                }
                 catch (Exception e)
                 {
-                    WriteExceptionMessage(e);
+                    Exceptions.Enqueue(e);
                 }
             }
         }
@@ -184,22 +181,27 @@ public class ClientModule : MonoSingleton<ClientModule>
                 try
                 {
                     var json = sr.ReadLine();
-                    if (!string.IsNullOrEmpty(json))
-                        ReceiveMessage(json);
+                    //if (!string.IsNullOrEmpty(json))
+                    Responses.Enqueue(json);
                 }
-                catch (IOException e)
+                catch(Exception e)
                 {
-                    Close();
-                }
-                catch (ThreadAbortException e)
-                {
-
-                }
-                catch (Exception e)
-                {
-                    WriteExceptionMessage(e);
+                    Exceptions.Enqueue(e);
                 }
             }
+        }
+    }
+
+
+    private void Update()
+    {
+        while (Responses.TryDequeue(out var json))
+        {
+            ProcessResponse(json);
+        }
+        while(Exceptions.TryDequeue(out var e))
+        {
+            ProcessException(e);
         }
     }
 
@@ -218,7 +220,7 @@ public class ClientModule : MonoSingleton<ClientModule>
         Requests.Enqueue(json);
     }
 
-    public void ReceiveMessage(in string json)
+    private void ProcessResponse(in string json)
     {
         var response = JsonUtility.FromJson<Response>(json);
         if (response.errorCode != ErrorCode.kOk)
@@ -238,13 +240,32 @@ public class ClientModule : MonoSingleton<ClientModule>
         }
     }
 
+    private void ProcessException(in Exception e)
+    {
+        switch (e)
+        {
+            case IOException ioException:
+                Close();
+                break;
+
+            default:
+                WriteExceptionMessage(e);
+                break;
+        }
+    }
+
     private void WriteExceptionMessage(in Exception e)
+    {
+        OnReceived?.Invoke(BuildSimpleMessage($"Exception thrown. : { e.Message }"));
+    }
+
+    private Message BuildSimpleMessage(in string Desc)
     {
         var message_b = new Message();
         message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
-        message_b.Desc = $"Exception thrown. : { e.Message }";
+        message_b.Desc = Desc;
         message_b.Name = "Log";
 
-        OnReceived?.Invoke(message_b);
+        return message_b;
     }
 }

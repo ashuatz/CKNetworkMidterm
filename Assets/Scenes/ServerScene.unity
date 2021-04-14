@@ -429,6 +429,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   addressField: {fileID: 1393236991}
   connectButton: {fileID: 2047793280}
+  disconnectButton: {fileID: 0}
+  ServerStartButton: {fileID: 2047793280}
 --- !u!1 &125906438
 GameObject:
   m_ObjectHideFlags: 0

@@ -14,6 +14,9 @@ public class UISetting : MonoBehaviour
     [SerializeField]
     private Button disconnectButton;
 
+    [SerializeField]
+    private Button ServerStartButton;
+
     private void Awake()
     {
         gameObject.SetActive(false);
@@ -50,13 +53,22 @@ public class UISetting : MonoBehaviour
     {
         ServerModule.Instance.Initialize();
         ServerModule.Instance.StartAcceptRoutine();
+
+        ServerModule.Instance.OnStart += Instance_OnStart;
+    }
+
+    private void Instance_OnStart()
+    {
+        if (ServerStartButton != null)
+            ServerStartButton.interactable = false;
+
+        ServerModule.Instance.OnStart -= Instance_OnStart;
     }
 
     private void Instance_OnConnected()
     {
         addressField.interactable = false;
         connectButton.interactable = false;
-
 
         if (disconnectButton != null)
             disconnectButton.interactable = true;
