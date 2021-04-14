@@ -107,9 +107,11 @@ public class ClientModule : MonoSingleton<ClientModule>
 
         if (ReceiveThread.IsAlive)
             ReceiveThread.Join();
+
         if (SendThread.IsAlive)
             SendThread.Join();
 
+        isRunning = false;
 
         var message_b = new Message();
         message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
