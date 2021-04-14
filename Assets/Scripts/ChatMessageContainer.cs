@@ -88,6 +88,9 @@ public class ChatMessageContainer : MonoBehaviour
 
     private void OnEndEdit(string str)
     {
+        if (string.IsNullOrEmpty(str))
+            return;
+
         var message = new Message();
         message.Name = nameField.text;
         message.ClinetSendTimeTick = DateTime.UtcNow.Ticks;

@@ -19,6 +19,7 @@ public class ClientModule : MonoSingleton<ClientModule>
 
     public bool IsConnected { get; private set; }
     public bool isRunning { get; private set; }
+    private bool isClosing { get; set; } = false;
 
     public event Action OnConnected;
     public event Action OnDisconnected;
@@ -26,9 +27,6 @@ public class ClientModule : MonoSingleton<ClientModule>
 
 
     private TcpClient Client { get; set; }
-    private NetworkStream ns { get; set; }
-    private StreamReader sr { get; set; }
-    private StreamWriter sw { get; set; }
 
     private ConcurrentQueue<string> Requests = new ConcurrentQueue<string>();
 
@@ -62,11 +60,8 @@ public class ClientModule : MonoSingleton<ClientModule>
             return;
         }
 
-        ns = Client.GetStream();
-        sr = new StreamReader(ns);
-        sw = new StreamWriter(ns);
-
         IsConnected = true;
+        isClosing = false;
         OnConnected?.Invoke();
     }
 
@@ -86,77 +81,120 @@ public class ClientModule : MonoSingleton<ClientModule>
 
     public void Close()
     {
-        if (!isRunning)
+        if (!isRunning || isClosing)
             return;
+
+        isClosing = true;
 
         isRunning = false;
 
-        SendThread.Interrupt();
-        ReceiveThread.Interrupt();
+        //ReceiveThread는 readLine이 해당 쓰레드를 block 하기때문에 Abort를 해야함.
+
+        if (ReceiveThread.IsAlive)
+            ReceiveThread.Abort();
+
+        if (SendThread.IsAlive)
+            SendThread.Interrupt();
 
         SendThread.Join();
         ReceiveThread.Join();
 
+        if (Client.Connected)
+        {
+            try
+            {
+                Client.Client.Shutdown(SocketShutdown.Both);
+            }
+            catch (SocketException e)
+            {
+                Debug.Log("SocketException in shutdown : " + e);
+            }
+        }
 
-        sw.Close();
-        sr.Close();
-        ns.Close();
-
+        //TCPClient.Close는 내부적으로 NetworkStream.Close를 호출함
         Client.Close();
 
         IsConnected = false;
-
         OnDisconnected?.Invoke();
     }
 
     public void WriteRoutine()
     {
-        while (isRunning)
+        //알아서 dispose 하도록
+        using (var sw = new StreamWriter(Client.GetStream()))
         {
-            Thread.Sleep(Config.NetworkUpdateTime);
 
-            if (Requests.Count <= 0)
-                continue;
+            while (isRunning)
+            {
+                try
+                {
+                    Thread.Sleep(Config.NetworkUpdateTime);
+                }
+                catch (ThreadInterruptedException e)
+                {
+                    //sleep 도중 interrupt가 걸렸을 경우
+                    return;
+                }
 
-            if (!Requests.TryDequeue(out var data))
-                continue;
+                if (Requests.Count <= 0)
+                    continue;
 
-            try
-            {
-                sw.WriteLine(data);
-                sw.Flush();
-            }
-            catch (IOException e)
-            {
-                Debug.LogError("IOException Thrown : " + e.Message);
-                isRunning = false;
-                break;
-            }
-            catch (Exception e)
-            {
-                WriteExceptionMessage(e);
+                if (!Requests.TryDequeue(out var data))
+                    continue;
+
+                try
+                {
+                    sw.WriteLine(data);
+                    sw.Flush();
+                }
+                catch (IOException e)
+                {
+                    Close();
+                    break;
+                }
+                catch (Exception e)
+                {
+                    WriteExceptionMessage(e);
+                }
             }
         }
     }
 
     void ReceiveRoutine()
     {
-        while (isRunning)
+        //알아서 dispose 하도록
+        using (var sr = new StreamReader(Client.GetStream()))
         {
-            Thread.Sleep(Config.NetworkUpdateTime);
+            while (isRunning)
+            {
+                try
+                {
+                    Thread.Sleep(Config.NetworkUpdateTime);
+                }
+                catch (ThreadInterruptedException e)
+                {
+                    //sleep 도중 interrupt가 걸렸을 경우
+                    return;
+                }
 
-            try
-            {
-                   var json = sr.ReadLine();
-                ReceiveMessage(json);
-            }
-            catch (IOException e)
-            {
-                isRunning = false;
-            }
-            catch (Exception e)
-            {
-                WriteExceptionMessage(e);
+                try
+                {
+                    var json = sr.ReadLine();
+                    if (!string.IsNullOrEmpty(json))
+                        ReceiveMessage(json);
+                }
+                catch (IOException e)
+                {
+                    Close();
+                }
+                catch (ThreadAbortException e)
+                {
+
+                }
+                catch (Exception e)
+                {
+                    WriteExceptionMessage(e);
+                }
             }
         }
     }

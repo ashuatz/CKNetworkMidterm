@@ -11,9 +11,15 @@ public class UISetting : MonoBehaviour
     [SerializeField]
     private Button connectButton;
 
+    [SerializeField]
+    private Button disconnectButton;
+
     private void Awake()
     {
         gameObject.SetActive(false);
+
+        if (disconnectButton != null)
+            disconnectButton.interactable = false;
     }
 
     public void OnClickConnect()
@@ -22,6 +28,14 @@ public class UISetting : MonoBehaviour
         ClientModule.Instance.OnDisconnected += Instance_OnDisconnected;
 
         ClientModule.Instance.Initialize(addressField.text);
+    }
+
+    public void OnClickDisconnnect()
+    {
+        if (disconnectButton != null)
+            disconnectButton.interactable = false;
+
+        ClientModule.Instance.Close();
     }
 
     private void Instance_OnDisconnected()
@@ -42,6 +56,10 @@ public class UISetting : MonoBehaviour
     {
         addressField.interactable = false;
         connectButton.interactable = false;
+
+
+        if (disconnectButton != null)
+            disconnectButton.interactable = true;
 
         ClientModule.Instance.OnConnected -= Instance_OnConnected;
 
