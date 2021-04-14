@@ -1,13 +1,15 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+
+using System;
+using System.Net;
+using System.Net.Sockets;
+
 using System.IO;
 using System.Threading;
 
 using UnityEngine;
-using System;
-using System.Net;
-using System.Net.Sockets;
 
 
 
@@ -15,16 +17,24 @@ public class ClientModule : MonoSingleton<ClientModule>
 {
     public bool IsInitialized { get; private set; }
 
+    public bool IsConnected { get; private set; }
+    public bool isRunning { get; private set; }
+
     public event Action OnConnected;
+    public event Action OnDisconnected;
     public event Action<Message> OnReceived;
 
+
+    private TcpClient Client { get; set; }
     private NetworkStream ns { get; set; }
     private StreamReader sr { get; set; }
     private StreamWriter sw { get; set; }
 
     private ConcurrentQueue<string> Requests = new ConcurrentQueue<string>();
 
-    private bool isRunning { get; set; }
+    private Thread ReceiveThread;
+    private Thread SendThread;
+
 
     public void Initialize(in string ipAddress)
     {
@@ -35,10 +45,10 @@ public class ClientModule : MonoSingleton<ClientModule>
 
         IPEndPoint serverPoint = new IPEndPoint(IPAddress.Parse(ipAddress), 9050);
 
-        var client = new TcpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        Client = new TcpClient(new IPEndPoint(IPAddress.Loopback, 0));
         try
         {
-            client.Connect(serverPoint);
+            Client.Connect(serverPoint);
         }
         catch (SocketException e)
         {
@@ -52,29 +62,59 @@ public class ClientModule : MonoSingleton<ClientModule>
             return;
         }
 
-        ns = client.GetStream();
+        ns = Client.GetStream();
         sr = new StreamReader(ns);
         sw = new StreamWriter(ns);
 
+        IsConnected = true;
         OnConnected?.Invoke();
     }
 
     public void Run()
     {
+        if (!IsConnected || isRunning)
+            return;
+
         isRunning = true;
 
-        var wthread = new Thread(WriteRoutine);
-        var rthread = new Thread(ReceiveRoutine);
+        SendThread = new Thread(WriteRoutine);
+        ReceiveThread = new Thread(ReceiveRoutine);
 
-        wthread.Start();
-        rthread.Start();
+        ReceiveThread.Start();
+        SendThread.Start();
+    }
 
+    public void Close()
+    {
+        if (!isRunning)
+            return;
+
+        isRunning = false;
+
+        SendThread.Interrupt();
+        ReceiveThread.Interrupt();
+
+        SendThread.Join();
+        ReceiveThread.Join();
+
+
+        sw.Close();
+        sr.Close();
+        ns.Close();
+
+        Client.Close();
+
+        IsConnected = false;
+
+        OnDisconnected?.Invoke();
     }
 
     public void WriteRoutine()
     {
         while (isRunning)
         {
+            Thread.Sleep(Config.NetworkUpdateTime);
+
             if (Requests.Count <= 0)
                 continue;
 
@@ -92,6 +132,10 @@ public class ClientModule : MonoSingleton<ClientModule>
                 isRunning = false;
                 break;
             }
+            catch (Exception e)
+            {
+                WriteExceptionMessage(e);
+            }
         }
     }
 
@@ -99,15 +143,20 @@ public class ClientModule : MonoSingleton<ClientModule>
     {
         while (isRunning)
         {
+            Thread.Sleep(Config.NetworkUpdateTime);
+
             try
             {
-                var json = sr.ReadLine();
+                   var json = sr.ReadLine();
                 ReceiveMessage(json);
-
             }
             catch (IOException e)
             {
                 isRunning = false;
+            }
+            catch (Exception e)
+            {
+                WriteExceptionMessage(e);
             }
         }
     }
@@ -145,5 +194,15 @@ public class ClientModule : MonoSingleton<ClientModule>
                 OnReceived?.Invoke(message);
                 break;
         }
+    }
+
+    private void WriteExceptionMessage(in Exception e)
+    {
+        var message_b = new Message();
+        message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
+        message_b.Desc = $"Exception thrown. : { e.Message }";
+        message_b.Name = "Log";
+
+        OnReceived?.Invoke(message_b);
     }
 }

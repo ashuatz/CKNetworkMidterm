@@ -9,8 +9,8 @@ public class Message
 {
     public string Name;
     public string Desc;
-    public DateTime ClinetSendTime;
-    public DateTime ServerCheckTime;
+    public long ClinetSendTimeTick;
+    public long ServerCheckTimeTick;
 }
 
 public class UIMessage : MonoBehaviour
@@ -26,12 +26,11 @@ public class UIMessage : MonoBehaviour
     private Text RecodedTime;
 
 
-
-    public void Initialize(in string senderName, in string message, in DateTime time)
+    public void Initialize(in string senderName, in string message, in long tick)
     {
         Sender.text = senderName;
         Desc.text = message;
-        RecodedTime.text = time.ToLocalTime().ToString("HH:mm:ss");
+        RecodedTime.text = new DateTime(tick).ToLocalTime().ToString("HH:mm:ss");
     }
 
 }

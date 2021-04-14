@@ -19,7 +19,17 @@ public class UISetting : MonoBehaviour
     public void OnClickConnect()
     {
         ClientModule.Instance.OnConnected += Instance_OnConnected;
+        ClientModule.Instance.OnDisconnected += Instance_OnDisconnected;
+
         ClientModule.Instance.Initialize(addressField.text);
+    }
+
+    private void Instance_OnDisconnected()
+    {
+        addressField.interactable = true;
+        connectButton.interactable = true;
+
+        ClientModule.Instance.OnDisconnected -= Instance_OnDisconnected;
     }
 
     public void OnClickServerInitialize()

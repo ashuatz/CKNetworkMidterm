@@ -65,6 +65,8 @@ public class Connection : IDisposable
 
         while (IsRunning)
         {
+            Thread.Sleep(Config.NetworkUpdateTime);
+
             try
             {
                 data = sr.ReadLine();
@@ -86,6 +88,8 @@ public class Connection : IDisposable
     {
         while (IsRunning)
         {
+            Thread.Sleep(Config.NetworkUpdateTime);
+
             if (messageQueue.Count <= 0)
                 continue;
 
@@ -176,7 +180,7 @@ public class ServerModule : MonoSingleton<ServerModule>
             TcpClient client = Listener.AcceptTcpClient();
 
             var message_b = new Message();
-            message_b.ServerCheckTime = DateTime.UtcNow;
+            message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
             message_b.Desc = $"connected with {(client.Client.RemoteEndPoint as IPEndPoint).Address} at port {(client.Client.RemoteEndPoint as IPEndPoint).Port}";
             message_b.Name = "Server Log";
 
@@ -233,7 +237,7 @@ public class ServerModule : MonoSingleton<ServerModule>
                 var messageString = request.data;
                 var message = JsonUtility.FromJson<Message>(messageString);
 
-                message.ServerCheckTime = DateTime.UtcNow;
+                message.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
                 response_b.data = JsonUtility.ToJson(message);
 
                 var response = JsonUtility.ToJson(response_b);
@@ -257,7 +261,7 @@ public class ServerModule : MonoSingleton<ServerModule>
             case IOException ioException:
 
                 var message_b = new Message();
-                message_b.ServerCheckTime = DateTime.UtcNow;
+                message_b.ServerCheckTimeTick = DateTime.UtcNow.Ticks;
                 message_b.Desc = $"Disconnected from { (connection.Client.Client.RemoteEndPoint as IPEndPoint).Address}";
                 message_b.Name = "Server Log";
 
@@ -277,5 +281,15 @@ public class ServerModule : MonoSingleton<ServerModule>
                 break;
         }
 
+    }
+
+    protected override void OnApplicationQuit()
+    {
+        base.OnApplicationQuit();
+
+        foreach(var connection in connections)
+        {
+            connection.Close();
+        }
     }
 }

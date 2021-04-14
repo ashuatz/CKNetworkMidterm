@@ -61,7 +61,7 @@ public class ChatMessageContainer : MonoBehaviour
             return;
         }
 
-        target.Initialize(message.Name, message.Desc, message.ServerCheckTime);
+        target.Initialize(message.Name, message.Desc, message.ServerCheckTimeTick);
         target.transform.SetParent(ContainerRoot, false);
         target.transform.localPosition = Vector3.one;
         target.transform.localScale = Vector3.one;
@@ -90,7 +90,7 @@ public class ChatMessageContainer : MonoBehaviour
     {
         var message = new Message();
         message.Name = nameField.text;
-        message.ClinetSendTime = DateTime.UtcNow;
+        message.ClinetSendTimeTick = DateTime.UtcNow.Ticks;
         message.Desc = str;
 
         ClientModule.Instance.SendMessage(OpCode.SendMessage, message);
