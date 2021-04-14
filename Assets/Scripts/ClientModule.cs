@@ -86,33 +86,40 @@ public class ClientModule : MonoSingleton<ClientModule>
 
         isClosing = true;
 
-        isRunning = false;
+        //isRunning = false;
 
         //ReceiveThread는 readLine이 해당 쓰레드를 block 하기때문에 Abort를 해야함.
-
-        if (ReceiveThread.IsAlive)
-            ReceiveThread.Abort();
-
-        if (SendThread.IsAlive)
-            SendThread.Interrupt();
-
-        SendThread.Join();
-        ReceiveThread.Join();
 
         if (Client.Connected)
         {
             try
             {
-                Client.Client.Shutdown(SocketShutdown.Both);
+                //Client.Client.Shutdown(SocketShutdown.Both);
+
+                Client.Client.Close();
             }
             catch (SocketException e)
             {
                 Debug.Log("SocketException in shutdown : " + e);
             }
+            finally
+            {
+                Client.Close();
+            }
         }
 
         //TCPClient.Close는 내부적으로 NetworkStream.Close를 호출함
-        Client.Close();
+        //Client.Close();
+
+        //if (ReceiveThread.IsAlive)
+        //    ReceiveThread.Abort();
+
+        //if (SendThread.IsAlive)
+        //    SendThread.Interrupt();
+
+        //SendThread.Join();
+        //ReceiveThread.Join();
+
 
         IsConnected = false;
         OnDisconnected?.Invoke();
@@ -124,7 +131,7 @@ public class ClientModule : MonoSingleton<ClientModule>
         using (var sw = new StreamWriter(Client.GetStream()))
         {
 
-            while (isRunning)
+            while (Client.Connected && sw.BaseStream.CanWrite)
             {
                 try
                 {
@@ -165,7 +172,7 @@ public class ClientModule : MonoSingleton<ClientModule>
         //알아서 dispose 하도록
         using (var sr = new StreamReader(Client.GetStream()))
         {
-            while (isRunning)
+            while (Client.Connected && sr.BaseStream.CanRead)
             {
                 try
                 {
