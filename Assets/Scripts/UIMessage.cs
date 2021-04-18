@@ -4,14 +4,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using System;
 
-[Serializable]
-public class Message
-{
-    public string Name;
-    public string Desc;
-    public long ClinetSendTimeTick;
-    public long ServerCheckTimeTick;
-}
 
 public class UIMessage : MonoBehaviour
 {

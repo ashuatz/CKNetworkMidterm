@@ -206,17 +206,16 @@ public class ClientModule : MonoSingleton<ClientModule>
     }
 
 
-    public void SendMessage(in OpCode opcode, Message message)
+    public void SendMessage(in OpCode opcode, in Message message)
     {
         var request = new Request();
-        request.opCode = OpCode.SendMessage;
+        request.opCode = opcode;
 
         request.data = JsonUtility.ToJson(message);
 
         var json = JsonUtility.ToJson(request);
 
         //var data = Encoding.UTF8.GetBytes(json);
-
         Requests.Enqueue(json);
     }
 

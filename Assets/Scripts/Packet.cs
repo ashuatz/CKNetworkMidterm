@@ -40,3 +40,11 @@ public class Response
 
     public string data;
 }
+
+[Serializable]
+public class Message
+{
+    public string Name;
+    public string Desc;
+    public long ServerCheckTimeTick;
+}

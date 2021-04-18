@@ -54,6 +54,11 @@ public class ChatMessageContainer : MonoBehaviour
         if (!receivedMessage.TryDequeue(out var message))
             return;
 
+        GenerateMessageBox(message);
+    }
+
+    private void GenerateMessageBox(in Message message)
+    {
         var instance = GameObject.Instantiate(GetMessageBox(message.Name));
         if (!instance.TryGetComponent<UIMessage>(out var target))
         {
@@ -74,6 +79,7 @@ public class ChatMessageContainer : MonoBehaviour
         scrollRect.normalizedPosition = new Vector2(0, 0);
     }
 
+
     private GameObject GetMessageBox(in string senderName)
     {
         if (senderName.Equals(nameField.text))
@@ -93,7 +99,6 @@ public class ChatMessageContainer : MonoBehaviour
 
         var message = new Message();
         message.Name = nameField.text;
-        message.ClinetSendTimeTick = DateTime.UtcNow.Ticks;
         message.Desc = str;
 
         ClientModule.Instance.SendMessage(OpCode.SendMessage, message);
